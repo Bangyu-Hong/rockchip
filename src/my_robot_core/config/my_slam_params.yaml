@@ -1,0 +1,91 @@
+slam_toolbox:
+  ros__parameters:
+
+    # ==========================================
+    # 1. 核心求解器参数 (Plugin params)
+    # 这些是后端图优化的数学算法设置，通常不需要修改，保持默认即可
+    # ==========================================
+    solver_plugin: solver_plugins::CeresSolver       # 使用 Google 开源的 Ceres 求解器来优化地图
+    ceres_linear_solver: SPARSE_NORMAL_CHOLESKY      # Ceres 求解线性方程组的方法 (适合稀疏矩阵)
+    ceres_preconditioner: SCHUR_JACOBI               # 预处理器类型，加速求解
+    ceres_trust_strategy: LEVENBERG_MARQUARDT        # 信任域策略，最经典的非线性优化方法
+    ceres_dogleg_type: TRADITIONAL_DOGLEG            # 狗腿步长策略的具体实现
+    ceres_loss_function: None                        # 损失函数 (None 表示不忽略异常值，直接硬算)
+
+    # ==========================================
+    # 2. ROS 基础通信参数 (ROS Parameters)
+    # 决定了 SLAM 怎么和你的底盘/雷达对暗号
+    # ==========================================
+    odom_frame: odom                                 # 你的底盘里程计坐标系名称
+    map_frame: map                                   # 生成的全局地图坐标系名称
+    base_frame: base_footprint                       # 机器人本体坐标系名称 (注意：你的是 base_footprint)
+    scan_topic: /scan_filtered                       # 激光滤波后的数据话题名称
+    use_map_saver: true                              # 允许在后台使用 map_saver 保存地图
+    mode: mapping                                    # 运行模式：mapping (建图模式) / localization (纯定位模式)
+
+    # (注释掉的部分是用于"断点续建"的，如果上次建了一半，可以加载之前的地图接着建)
+    # map_file_name: test_steve
+    # map_start_pose: [0.0, 0.0, 0.0]
+    # map_start_at_dock: true
+
+    debug_logging: false                             # 是否在终端打印底层的海量调试信息 (关掉，否则刷屏)
+    throttle_scans: 1                                # 雷达数据降采样率。1 表示处理每一帧，2 表示跳过一半。算力弱可改大，RK3588 保持 1 即可
+    transform_publish_period: 0.02                   # ⚠️ 极其关键：向系统发布 TF 坐标更新的周期。0.02秒 = 50Hz。决定了小车定位的平滑度
+    map_update_interval: 1.0                         # 向 RViz 刷新可见地图图片的间隔；先提高刷新频率，便于手动打点和调参
+    resolution: 0.02                                 # ⚠️ 地图分辨率。0.05 表示地图上的一个像素格子代表现实中的 5 厘米
+    min_laser_range: 0.15                             # 雷达能测到的最近距离。低于这个距离的数据当垃圾扔掉
+    max_laser_range: 5.0                             # 建图恢复到 5m，与当前探索场地和导航感知范围更一致
+    minimum_time_interval: 0.1                       # 10Hz 激光下按每帧处理，避免 0.5s 造成建图更新过稀
+    transform_timeout: 0.2                           # TF 等待超时时间。容忍一定的网络延迟
+    tf_buffer_duration: 30.                          # 在内存中保留过去 30 秒的 TF 历史轨迹
+    stack_size_to_use: 40000000                      # 给算法分配 40MB 的内存栈，用来处理大地图的保存
+    enable_interactive_mode: true                    # 开启 RViz 里的交互模式 (允许用鼠标手动微调建出重影的地图)
+
+    # ==========================================
+    # 3. 建图触发与通用匹配机制 (General Parameters)
+    # 决定了小车什么时候开始算坐标，什么时候拍关键帧
+    # ==========================================
+    use_scan_matching: true                          # 必须 true！允许算法用雷达扫到的墙壁去纠正打滑的里程计
+    use_scan_barycenter: true                        # 使用雷达点云的重心来提高对齐精度
+    minimum_travel_distance: 0.10                    # 降低关键帧位移门槛，让慢速探索和贴墙修边时也能及时入图
+    minimum_travel_heading: 0.12                     # 降低关键帧角度门槛，拐角和小角度修正时更容易触发建图更新
+    scan_buffer_size: 10                             # 内存里缓存最近 10 帧雷达数据用来对比
+    scan_buffer_maximum_scan_distance: 5.0           # 与 max_laser_range 保持一致，缓存层同样只保留 5m 内的扫描
+    link_match_minimum_response_fine: 0.1            # 判定前后两帧雷达“匹配成功”的最低分数线
+    link_scan_maximum_distance: 1.5                  # 判定两个扫描节点在空间上相连的最大距离
+
+    # ==========================================
+    # 4. 回环检测核心机制 (Loop Closure Parameters)
+    # SLAM 的灵魂：绕了一圈回到原点时，强行把地图闭合，消除重影
+    # ==========================================
+    do_loop_closing: true                            # 必须 true！开启回环检测
+    loop_search_maximum_distance: 3.0                # 在半径 3 米内寻找曾经走过的路进行回环
+    loop_match_minimum_chain_size: 10                # 必须连续成功匹配 10 帧，才确信“我确实绕回来了”，防误判
+    loop_match_maximum_variance_coarse: 3.0          # 粗略回环匹配允许的最大误差方差
+    loop_match_minimum_response_coarse: 0.35         # 粗略回环匹配的最低及格分数 (35分)
+    loop_match_minimum_response_fine: 0.45           # 确认回环时的严苛精细分数 (45分)
+
+    # ==========================================
+    # 5. 扫描空间搜索分辨率 (Search Space Dimension)
+    # ==========================================
+    correlation_search_space_dimension: 0.5          # 日常走动时，在 0.5 米范围内搜索最佳匹配点
+    correlation_search_space_resolution: 0.01        # 搜索步长 1 厘米，非常精细
+    correlation_search_space_smear_deviation: 0.1    # 搜索时的“涂抹”容差，用来应对雷达噪点
+
+    loop_search_space_dimension: 8.0                 # 寻找回环时，搜索范围扩大到 8 米
+    loop_search_space_resolution: 0.05               # 回环搜索步长 5 厘米 (范围大了，步长也得大，省 CPU)
+    loop_search_space_smear_deviation: 0.03          # 回环的涂抹容差
+
+    # ==========================================
+    # 6. 扫描惩罚与建图概率 (Scan Matcher Parameters)
+    # ==========================================
+    distance_variance_penalty: 0.5                   # 距离算不准的惩罚系数
+    angle_variance_penalty: 1.0                      # 角度算不准的惩罚系数 (你的麦轮容易偏角，权重设大是对的)
+    fine_search_angle_offset: 0.00349                # 精调匹配角度步长 (约 0.2 度)
+    coarse_search_angle_offset: 0.349                # 粗调匹配角度步长 (约 20 度)
+    coarse_angle_resolution: 0.0349                  # 粗调角度分辨率 (约 2 度)
+    minimum_angle_penalty: 0.9                       # 最小角度惩罚
+    minimum_distance_penalty: 0.5                    # 最小距离惩罚
+    use_response_expansion: True                    # 在环境特征不明显 (比如长走廊) 时，自动扩大搜索范围
+    min_pass_through: 2                              # “击穿机制”：如果雷达射线连续 2 次穿过某个格子没撞到东西，就把这个格子标记为空地
+    occupancy_threshold: 0.27                        # 提高到 0.27，让鬼影更容易被后续无遮挡扫描洗掉，同时避免像 0.5 那样过于激进

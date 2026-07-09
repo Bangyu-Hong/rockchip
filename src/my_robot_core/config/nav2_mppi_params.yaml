@@ -1,0 +1,276 @@
+amcl:
+  ros__parameters:
+    use_sim_time: False
+    alpha1: 0.2
+    alpha2: 0.2
+    alpha3: 0.2
+    alpha4: 0.2
+    base_frame_id: "base_footprint"
+    global_frame_id: "map"
+    odom_frame_id: "odom"
+    laser_max_range: 5.0
+    max_particles: 2000
+    min_particles: 500
+    robot_model_type: "nav2_amcl::OmniMotionModel"
+    save_pose_rate: 0.5
+    scan_topic: scan_filtered
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: False
+    global_frame: map
+    robot_base_frame: base_footprint
+    odom_topic: /odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: False
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_footprint
+    transform_tolerance: 0.2
+    simulate_ahead_time: 1.0
+    max_rotational_vel: 2.2
+    min_rotational_vel: 0.8
+    rotational_acc_lim: 8.0
+
+controller_server:
+  ros__parameters:
+    use_sim_time: False
+    controller_frequency: 20.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001
+    min_theta_velocity_threshold: 0.001
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 10.0
+
+    general_goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.05
+      yaw_goal_tolerance: 0.08
+
+    # 这份配置文件只作为 MPPI 调试基线，不接入当前正式 launch。
+    # 参数名按本机 /opt/ros/humble/nav2_mppi_controller 可印证的契约写，
+    # 保持当前底盘为全向运动模型；局部 costmap 使用 /scan_safety，定位/全局仍使用 /scan_filtered。
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      motion_model: "Omni"                                 # 全向底盘必须用 Omni；差速车才用 DiffDrive
+      visualize: false                                     # true 会发布大量调试轨迹，实车调参时更吃 CPU
+
+      # 预测时域：20 Hz 控制频率下，0.05 s * 20 ≈ 1 s 预瞄
+      # time_steps * model_dt = 预测时域长度。时域越长，看得越远，但计算越重。
+      time_steps: 20
+      model_dt: 0.05
+      # batch_size = 每周期采样多少条候选轨迹。越大越稳，但越吃算力。
+      batch_size: 800
+      iteration_count: 1                                   # 每周期重复优化次数；>1 会继续增大算力消耗
+      retry_attempt_limit: 1                               # 一轮全碰撞时的重试次数
+      prune_distance: 1.5                                  # 全局路径在机器人身后被裁掉的距离
+      transform_tolerance: 0.2                             # TF 容忍时间
+      temperature: 0.3                                     # 越小越“贪心”地选低代价轨迹，越大越平滑保守
+      gamma: 0.015                                         # 控制能量惩罚，越大越抑制激进速度变化
+
+      # 速度与采样范围：与当前 TEB / 底盘限速保持同量级
+      vx_max: 0.5                                          # X 前进上限
+      vx_min: -0.2                                         # X 倒车下限
+      vy_max: 0.3                                          # Y 横移上限；Omni 模型下生效
+      wz_max: 2.2                                          # 角速度上限
+      # std 是采样噪声标准差：太小会“只会蠕动、不敢探索”，太大则容易抖动。
+      vx_std: 0.20
+      vy_std: 0.15
+      wz_std: 0.40
+
+      # 关闭路径反转和重型可视化，降低 RK3588 负担
+      trajectory_step: 5                                   # 可视化时抽样步长
+      time_step: 3                                         # 可视化时沿时间轴抽样步长
+      enforce_path_inversion: false                        # 当前比赛任务不需要强制执行路径反转点
+      inversion_xy_tolerance: 0.2                          # 若启用路径反转，进入反转点的 XY 容差
+      inversion_yaw_tolerance: 0.4                         # 若启用路径反转，进入反转点的朝向容差
+
+      critics:
+        [
+          "ConstraintCritic",
+          "ObstaclesCritic",
+          "GoalCritic",
+          "GoalAngleCritic",
+          "PathAlignCritic",
+          "PathFollowCritic",
+          "TwirlingCritic"
+        ]
+
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1                                      # 代价幂次；通常先保持 1
+        cost_weight: 4.0                                   # 约束惩罚权重，越大越不容易超速度/转速边界
+
+      ObstaclesCritic:
+        enabled: true
+        cost_power: 1
+        repulsion_weight: 1.5                              # 中远距离排斥权重
+        critical_weight: 20.0                              # 临近碰撞时的强惩罚权重
+        collision_margin_distance: 0.08                    # 距离障碍很近时提前触发强惩罚
+        near_goal_distance: 0.30                           # 靠近终点时允许更积极地贴近障碍
+        inflation_radius: 0.4                              # 要和 costmap inflation_radius 同量级
+        consider_footprint: true                           # true = 用车体轮廓而不是质点做碰撞评估
+
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0                                   # 拉向目标点的权重
+        threshold_to_consider: 1.2                         # 仅在接近目标一定范围内重点考虑
+
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0                                   # 拉向目标朝向的权重
+        threshold_to_consider: 0.5                         # 靠近终点后才更重视终点朝向
+
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 10.0                                  # 贴全局路径的强度；太大时会不敢绕障
+        max_path_occupancy_ratio: 0.10                     # 路径被障碍占据多少比例后降低对齐要求
+        trajectory_point_step: 3                           # 轨迹上隔几个点取一次做对齐评估
+        threshold_to_consider: 0.5                         # 靠近终点后弱化路径对齐刚性
+        offset_from_furthest: 6                            # 用更靠前的路径点做对齐参考，避免只盯脚下
+        use_path_orientations: false                       # 当前全局路径不强依赖朝向信息
+
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0                                   # 沿全局路径向前推进的权重
+        threshold_to_consider: 1.2                         # 靠近目标后弱化“向前冲”
+        offset_from_furthest: 4                            # 参考前方第几个路径点，太小易保守，太大易抄近道
+
+      TwirlingCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 1.0                                   # 抑制原地乱转；全向车若转圈过多可适当增大
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: False
+      global_frame: odom
+      robot_base_frame: base_footprint
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      transform_tolerance: 0.2
+      rolling_window: true
+      width: 5
+      height: 5
+      resolution: 0.02
+      # 备用 MPPI costmap 也使用当前实车 footprint：中心不变，前方机械臂和后方放球框都纳入占用。
+      footprint: "[[0.165, 0.125], [0.165, -0.125], [-0.245, -0.125], [-0.245, 0.125]]"
+      footprint_padding: 0.005
+      always_send_full_costmap: True
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 7.0
+        inflation_radius: 0.4
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan_safety                                # 局部避障使用安全雷达：坡上仅保留近距点
+          data_type: "LaserScan"
+          clearing: True
+          marking: True
+          raytrace_max_range: 5.0                            # 清障距离 5m：把射线上消失的障碍从 costmap 擦除
+          raytrace_min_range: 0.0
+          obstacle_max_range: 4.5                            # 局部标障距离 4.5m：提前看到前方障碍，但比清障略保守
+          obstacle_min_range: 0.0
+          max_obstacle_height: 2.0
+          inf_is_valid: true                                 # 水平完整扫描时继续清障；坡上远距点由 /scan_safety 置 NaN
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: False
+      global_frame: map
+      robot_base_frame: base_footprint
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      transform_tolerance: 0.2
+      resolution: 0.05
+      track_unknown_space: true
+      # 必须与 local_costmap / 正式 TEB footprint 保持一致。
+      footprint: "[[0.165, 0.125], [0.165, -0.125], [-0.245, -0.125], [-0.245, 0.125]]"
+      footprint_padding: 0.005
+      always_send_full_costmap: True
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        observation_sources: scan
+        scan:
+          topic: /scan_filtered
+          data_type: "LaserScan"
+          clearing: True
+          marking: True
+          raytrace_max_range: 4.5                            # 全局清障距离 4.5m：比全局标障略远，便于擦除临时障碍尾迹
+          raytrace_min_range: 0.0
+          obstacle_max_range: 4.0                            # 全局标障距离 4m：降低远处实时障碍对全局路径的扰动
+          obstacle_min_range: 0.0
+          max_obstacle_height: 2.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 8.0
+        inflation_radius: 0.4
+
+map_server:
+  ros__parameters:
+    use_sim_time: False
+
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 20.0
+    use_sim_time: False
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      tolerance: 0.2
+      use_astar: false
+      allow_unknown: true
+
+recoveries_server:
+  ros__parameters:
+    use_sim_time: False
+    global_frame: map
+    robot_base_frame: base_footprint
+    transform_timeout: 0.2
+    simulate_ahead_time: 1.0
+    max_rotational_vel: 2.2
+    min_rotational_vel: 0.8
+    rotational_acc_lim: 8.0
+
+robot_state_publisher:
+  ros__parameters:
+    use_sim_time: False
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: False
+    smoothing_frequency: 20.0
+    scale_velocities: False
+    feedback: "OPEN_LOOP"
+    max_velocity: [0.5, 0.3, 2.2]
+    min_velocity: [-0.2, -0.3, -2.2]
+    max_accel: [2.5, 1.0, 8.0]
+    max_decel: [-2.5, -1.0, -8.0]
+    odom_topic: "/odom"

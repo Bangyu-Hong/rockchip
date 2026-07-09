@@ -1,0 +1,49 @@
+planar_ekf_node:
+  ros__parameters:
+    # 可选 EKF 试验输入：base_driver 默认直发 /odom，IMU 发布姿态和角速度。
+    wheel_odom_topic: /odom
+    imu_topic: /imu/data
+
+    # 可选 EKF 输出：默认主链不读取该话题，显式启用 EKF 试验时再使用。
+    filtered_odom_topic: /odometry/filtered
+    odom_frame_id: odom
+    base_frame_id: base_footprint
+    publish_tf: true
+    publish_rate_hz: 50.0
+    max_prediction_dt: 0.2
+
+    # EKF 状态顺序：[x, y, yaw, vx, vy, wz]。
+    # 数值越大表示越不相信模型预测，更依赖传感器更新。
+    process_std: [0.03, 0.03, 0.03, 0.20, 0.20, 0.30]
+
+    # 轮式里程计主要负责 x/y/vx/vy；yaw/wz 只在 IMU 未到达前临时兜底。
+    use_wheel_position: true
+    use_wheel_twist: true
+    use_wheel_yaw_until_imu: true
+    use_wheel_wz_until_imu: true
+    wheel_position_std: 0.05
+    wheel_velocity_std: 0.05
+    wheel_yaw_std: 0.20
+    wheel_wz_std: 0.05
+
+    # IMU 负责 yaw 和 gyro_z/wz；不要再重复使用 wheel yaw。
+    use_imu_yaw: true
+    use_imu_wz: true
+    imu_yaw_std: 0.03
+    imu_wz_std: 0.05
+
+    # RGB-D 视觉里程计低权重接入。默认关闭，只在专项试验时打开。
+    # 打开后只使用视觉位姿增量估算 vx/vy，不直接融合视觉绝对位置和 yaw。
+    rgbd_odom_topic: /rgbd/odom
+    use_visual_odom: false
+    use_visual_position: false
+    use_visual_twist: true
+    use_visual_yaw: false
+    visual_position_std: 0.80
+    visual_twist_std: 0.35
+    visual_yaw_std: 0.80
+    visual_forward_axis: z
+    visual_left_axis: -x
+    visual_max_dt: 0.5
+    visual_max_speed_mps: 0.8
+    visual_max_delta_m: 0.4

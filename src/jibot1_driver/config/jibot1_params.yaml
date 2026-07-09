@@ -1,0 +1,23 @@
+jibot1_driver:
+  ros__parameters:
+    # 串口配置
+    port: "/dev/ttyS3"          # Linux: /dev/ttyUSB0, Windows: COM3
+    baud: 115200
+
+    # 运动参数
+    move_time: 1000               # 默认运动时间 (ms)
+
+    # 连杆长度 (mm) —— 与 ESP32 出厂固件一致
+    link_l0: 235                  # 底盘到第二舵机中心轴
+    link_l1: 85                  # 第二舵机到第三舵机
+    link_l2: 55                   # 第三舵机到第四舵机
+    link_l3: 205                  # 第四舵机到末端(爪闭合)
+
+    # 夹爪 PWM
+    gripper_open_pwm: 1200        # 张开
+    gripper_close_pwm: 1700       # 闭合
+    gripper_time: 800             # 夹爪动作时间 (ms)
+
+    # 舵机 PWM 限幅
+    servo_pwm_min: 500
+    servo_pwm_max: 2500

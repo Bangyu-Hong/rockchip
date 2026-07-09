@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>my_robot_core</name>
+  <version>0.0.0</version>
+  <description>Core ROS2 bringup, base driver, and main control nodes for the robot platform.</description>
+  <maintainer email="elf@todo.todo">elf</maintainer>
+  <license>MIT</license>
+
+  <depend>action_msgs</depend>
+  <depend>ament_index_python</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>launch</depend>
+  <depend>launch_ros</depend>
+  <depend>nav2_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>rcl_interfaces</depend>
+  <depend>rclpy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>tf2_ros</depend>
+  <exec_depend>python3-numpy</exec_depend>
+
+  <exec_depend>jibot1_driver</exec_depend>
+  <exec_depend>nav2_bringup</exec_depend>
+  <exec_depend>orbbec_camera</exec_depend>
+  <exec_depend>robot_vision</exec_depend>
+  <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>sllidar_ros2</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
