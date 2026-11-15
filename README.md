@@ -1,168 +1,125 @@
 # 基于 RK3588 的智能物料拾取机器人
 
-**RK3588 Mobile Manipulation Robot — ROS 2 / SLAM / Vision / Manipulation**
+**RK3588 Mobile Manipulation Robot | ROS 2 · SLAM · Computer Vision · Robotic Manipulation**
 
 > 2026 年全国大学生嵌入式芯片与系统设计竞赛团队项目。
 
- ## 🎬 项目演示 | Project Demo
+## 🎬 项目演示 | Demo
 
-[▶ 查看机器人实机演示视频](./演示视频.mp4)
+- [▶ 查看机器人演示视频](./演示视频.mp4)
+- [📄 阅读完整技术文档](./技术文档.pdf)
 
-[📄 查看完整技术文档](./技术文档.pdf)
+> 演示视频与技术文档为团队作品材料；具体功能的验证范围以实际演示及测试记录为准。
 
-> 本项目为团队竞赛作品，实际演示内容与
-> 功能完成情况以视频和实验记录为准。
+## 1. 项目概览 | Overview
 
+本项目面向室内球体拾取与轻量物料递送任务，构建了一套由 **RK3588 + STM32F407 + ESP32** 协同工作的移动操作机器人系统，涉及视觉目标检测、环境建图与导航、麦克纳姆轮运动控制、机械臂抓取和多阶段任务调度。
 
-## 1. 项目简介
+| 平台          | 主要职责                                       |
+| ------------- | ---------------------------------------------- |
+| **RK3588**    | ROS 2 节点、YOLO/RKNN 视觉推理、导航及任务调度 |
+| **STM32F407** | 麦克纳姆轮控制、编码器反馈、里程计与串口通信   |
+| **ESP32**     | 机械臂动作执行与舵机控制（固件内容待单独整理） |
 
-项目面向室内球体拾取与物料递送场景，采用 **RK3588 + STM32F407 + ESP32** 分层控制架构，包含视觉目标检测、地图构建与导航、底盘运动控制、机械臂抓取和任务状态管理等模块。
+本项目采用**视觉感知—导航决策—底盘执行—机械臂操作**的分层技术路线，属于传统机器人感知与控制系统，并非端到端 VLA 策略模型。
 
-- **RK3588**：ROS 2 节点、视觉推理、导航与任务调度。
-- **STM32F407**：麦克纳姆轮控制、编码器反馈、里程计及通信接口。
-- **ESP32 / 机械臂控制侧**：抓取执行机构（完整固件与接口仍需按实际仓库核对）。
+## 2. 系统架构与核心代码 | Architecture & Code
 
+```text
+RGB-D 相机 / 激光雷达 / 任务输入
+              │
+              ▼
+        RK3588 · ROS 2
+  ├─ robot_vision：YOLO/RKNN、RGB-D 感知
+  ├─ my_robot_core：状态机、Nav2、EKF、底盘接口
+  └─ jibot1_driver：机械臂任务接口
+              │
+       ┌──────┴──────┐
+       ▼             ▼
+ STM32F407 底盘     机械臂控制侧
+  麦轮 / 里程计      抓取动作执行
+```
 
-## 
-## 2. 核心代码模块 | Core Modules
+### 核心功能包
 
-本项目采用 ROS 2 模块化架构，包含机器人导航与控制、
-视觉感知、机械臂执行三个主要部分。
+| 模块             | 主要功能                                           | 源代码                                |
+| ---------------- | -------------------------------------------------- | ------------------------------------- |
+| 机器人导航与控制 | 任务状态机、导航调度、二维 EKF、底盘通信           | [my_robot_core](./src/my_robot_core/) |
+| 视觉感知         | RKNNLite/YOLO 推理、目标三维定位、RGB-D 视觉里程计 | [robot_vision](./src/robot_vision/)   |
+| 机械臂控制       | 运动学、驱动与抓取执行                             | [jibot1_driver](./src/jibot1_driver/) |
 
-| 模块 | 核心功能 | 源代码 |
-|---|---|---|
-| 机器人导航与控制 | 任务状态机、导航调度、二维 EKF、底盘通信 | [my_robot_core](./src/my_robot_core/) |
-| 机器人视觉感知 | RKNNLite/YOLO 推理、目标三维定位、RGB-D 视觉里程计 | [robot_vision](./src/robot_vision/) |
-| 机械臂控制 | 机械臂运动学、驱动和抓取执行 | [jibot1_driver](./src/jibot1_driver/) |
+### 关键代码入口
 
-### 主要技术实现
+| 文件                                                         | 代码中的主要实现                                             |
+| ------------------------------------------------------------ | ------------------------------------------------------------ |
+| [main_control.py](./src/my_robot_core/my_robot_core/main_control.py) | ROS 2 任务状态机、Nav2 `NavigateToPose` 接口、视觉对位与抓取流程 |
+| [npu_3d_tracker.py](./src/robot_vision/robot_vision/npu_3d_tracker.py) | RKNNLite 推理、YOLO 后处理、颜色/形状筛选、深度目标定位      |
+| [planar_ekf_node.py](./src/my_robot_core/my_robot_core/planar_ekf_node.py) | 轮式里程计、IMU 与可选 RGB-D 里程计的二维 EKF 融合           |
+| [rgbd_visual_odometry_node.py](./src/robot_vision/robot_vision/rgbd_visual_odometry_node.py) | RGB-D 特征匹配和视觉位姿估计                                 |
+| [base_driver.py](./src/my_robot_core/my_robot_core/base_driver.py) | 底盘串口接口、运动指令与里程计/IMU 话题发布                  |
+| [pick_place_node.py](./src/jibot1_driver/jibot1_driver/pick_place_node.py) | 机械臂抓取任务执行节点                                       |
 
-**机器人导航与控制**
-- 基于 ROS 2 的节点通信与任务调度
-- 搜索、导航接近、视觉对位与抓取状态机
-- 轮式里程计及多传感器状态估计
-
-**视觉感知**
-- 基于 RKNNLite 的端侧目标检测
-- 结合颜色、形状和深度信息进行目标定位
-- RGB-D 视觉里程计
-
-**机械臂执行**
-- 机械臂运动学计算
-- 抓取任务节点与动作执行
-
-- 
-### 关键算法实现 | Key Implementations
-
-以下为项目中值得重点查看的算法与控制代码。
-
-| 核心代码 | 技术内容 |
-|---|---|
-| [main_control.py](./src/my_robot_core/my_robot_core/main_control.py) | ROS 2 任务状态机、Nav2 目标调度、视觉对位与抓取流程 |
-| [npu_3d_tracker.py](./src/robot_vision/robot_vision/npu_3d_tracker.py) | YOLO/RKNN 端侧推理、目标筛选、RGB-D 三维定位 |
-| [planar_ekf_node.py](./src/my_robot_core/my_robot_core/planar_ekf_node.py) | 二维 EKF、轮式里程计与 IMU 融合、可选视觉里程计融合 |
-| [rgbd_visual_odometry_node.py](./src/robot_vision/robot_vision/rgbd_visual_odometry_node.py) | RGB-D 特征匹配与视觉里程计 |
-
-### 算法验证代码
-
-项目还包含部分模块测试代码：
-
-- [任务控制测试](./src/my_robot_core/test/test_main_control.py)
-- [EKF 测试](./src/my_robot_core/test/test_planar_ekf_node.py)
-- [RGB-D 视觉里程计测试](./src/robot_vision/test/test_rgbd_visual_odometry_node.py)
-
-说明：以上列出了仓库中的算法实现与测试文件。
-实际运行结果以实验记录与演示视频为准。
-
+**单元测试入口：** [任务状态机测试](./src/my_robot_core/test/test_main_control.py) · [EKF 测试](./src/my_robot_core/test/test_planar_ekf_node.py) · [RGB-D 里程计测试](./src/robot_vision/test/test_rgbd_visual_odometry_node.py)
 
 ## 3. 个人贡献 | My Contributions
 
-本项目为团队合作完成的智能移动操作机器人，采用 **RK3588 + STM32F407 + ESP32** 多控制器协同架构。
+本项目由团队合作完成。**本人主导** ROS 2 导航与任务控制、机器人视觉感知、多传感器状态估计以及 STM32F407 底盘控制；**参与** 机械臂控制和整机系统架构与联调。
 
-本人主要负责 **ROS 2 导航与任务控制、机器人视觉感知、多传感器状态估计及 STM32 底盘控制**，同时参与机械臂控制和整机系统集成联调。
+### 主导开发 | Primary Contributions
 
-### 3.1 主导开发 | Primary Contributions
+**① ROS 2 导航与任务状态机**
 
-**1. ROS 2 导航与任务状态机**
+- 基于 Nav2 `NavigateToPose` Action 接口实现导航目标调度。
+- 设计目标搜索、导航接近、视觉对位、抓取等任务状态，以及超时、目标丢失和障碍物相关处理逻辑。
+- 对应代码：[main_control.py](./src/my_robot_core/my_robot_core/main_control.py)。
 
-- 主导机器人 ROS 2 导航与任务控制模块的开发，基于 Nav2 `NavigateToPose` Action 接口实现导航目标管理。
-- 设计目标搜索、导航接近、视觉对位与抓取等任务状态的切换逻辑。
-- 实现导航超时、目标丢失、障碍物检测及恢复处理等功能。
+**② 视觉感知与 RKNN 端侧推理**
 
-核心代码：[main_control.py](./src/my_robot_core/my_robot_core/main_control.py)
+- 在 RK3588 上使用 RKNNLite 运行 YOLO 检测模型，并实现目标检测后处理。
+- 结合颜色、轮廓形状及深度信息完成候选目标筛选和三维位置估计。
+- 对应代码：[npu_3d_tracker.py](./src/robot_vision/robot_vision/npu_3d_tracker.py)。
 
-**2. 机器人视觉感知与端侧推理**
+**③ 多传感器状态估计**
 
-- 主导基于 RK3588 NPU 的视觉感知模块开发，使用 RKNNLite 加载和运行 YOLO 检测模型。
-- 结合颜色筛选、轮廓形状分析及深度信息，提高目标筛选与位置估计的适用性。
-- 实现相机图像处理、目标深度获取、像素坐标到三维空间坐标转换及 ROS 目标信息发布。
+- 开发二维 EKF 节点，实现轮式里程计、IMU 和可选 RGB-D 视觉里程计的状态融合。
+- 开发 RGB-D 特征匹配与视觉位姿估计节点，为导航定位提供辅助观测。
+- 对应代码：[planar_ekf_node.py](./src/my_robot_core/my_robot_core/planar_ekf_node.py)、[rgbd_visual_odometry_node.py](./src/robot_vision/robot_vision/rgbd_visual_odometry_node.py)。
 
-核心代码：[npu_3d_tracker.py](./src/robot_vision/robot_vision/npu_3d_tracker.py)
+**④ STM32F407 麦克纳姆轮底盘控制**
 
-**3. 多传感器状态估计与视觉里程计**
+- 主导底盘控制模块开发，涉及麦轮运动学、编码器反馈和速度闭环控制。
+- 对接 RK3588 与 STM32F407 的通信链路，实现运动指令和里程计反馈交互。
+- ROS 接口：[base_driver.py](./src/my_robot_core/my_robot_core/base_driver.py)；底盘 MCU 固件待独立整理并补充链接。
 
-- 主导二维扩展卡尔曼滤波（EKF）节点开发，实现状态预测与观测更新。
-- 融合轮式里程计、IMU 以及可选 RGB-D 视觉里程计信息，为机器人导航提供状态估计。
-- 开发基于 ORB 特征提取、特征匹配与 PnP 位姿估计的 RGB-D 视觉里程计节点。
+### 协同开发 | Collaborative Contributions
 
-核心代码：
+- **机械臂：** 参与机械臂驱动、运动学及抓取接口的开发与联调。
+- **整机系统：** 参与多控制器通信、ROS 2 节点集成以及导航、感知、执行链路的实机调试。
 
-- [planar_ekf_node.py](./src/my_robot_core/my_robot_core/planar_ekf_node.py)
-- [rgbd_visual_odometry_node.py](./src/robot_vision/robot_vision/rgbd_visual_odometry_node.py)
+> 本节描述本人在团队项目中的实际分工；Nav2、ROS 2、相机驱动及其他第三方组件不作为本人独立原创算法成果。
 
-**4. STM32F407 麦克纳姆轮底盘控制**
+## 4. 实验与验证 | Experiments & Results
 
-- 主导 STM32F407 底盘控制模块开发，涉及麦克纳姆轮运动学、编码器反馈及电机速度闭环控制。
-- 开发和对接 RK3588 与 STM32F407 之间的串口通信链路，实现车体速度指令传输和底盘状态回传。
-- 参与底盘运动调试、里程计数据处理及通信安全保护机制的实现。
+| 验证内容             | 当前公开材料               | 后续需补充的可核验证据                   |
+| -------------------- | -------------------------- | ---------------------------------------- |
+| 整机功能演示         | [演示视频](./演示视频.mp4) | 各任务阶段的时间点和演示条件             |
+| 建图与导航           | 源代码、技术文档           | 实机 RViz 地图、轨迹、导航日志及测试条件 |
+| YOLO/RKNN 视觉检测   | 推理代码、技术文档         | 原始输入、检测截图、延迟与精度实测数据   |
+| EKF / RGB-D 里程计   | 实现代码、测试代码         | 融合前后轨迹、误差统计与测试环境         |
+| 底盘控制与机械臂抓取 | 控制接口、技术文档         | 速度反馈、抓取视频及任务成功率统计       |
 
-相关 ROS 接口代码：[base_driver.py](./src/my_robot_core/my_robot_core/base_driver.py)
+**说明：** 上表仅说明当前仓库包含的材料和拟补充的证据，不将设计指标、代码实现或单项演示等同于全流程实机验收；在获得可复核数据前不宣称具体精度或成功率。
 
-STM32 固件代码将另行整理并标注。
+## 5. 环境与运行 | Setup & Usage
 
-### 3.2 参与开发与系统联调 | Collaborative Contributions
+仓库包含 ROS 2 Python 功能包及硬件相关配置，完整依赖版本、设备映射、相机外参和可复现启动流程仍在核对。
 
-**机械臂控制**
+## 6. 第三方依赖与致谢 | Third-Party Software
 
-- 参与机械臂运动学、抓取节点和执行控制接口的开发联调。
-- 配合完成视觉目标位置向机械臂抓取指令的传递及动作执行流程调试。
+工程中涉及 `costmap_converter`、`OrbbecSDK_ROS2-master`、`sllidar_ros2`、`teb_local_planner` 和 `vision_opencv` 等第三方组件。这些代码不是团队独立原创成果；
 
-**系统架构与实机联调**
+感谢项目团队成员在机械结构、电子系统、代码开发与集成验证中的合作。
 
-- 参与 RK3588、STM32F407 与机械臂控制器之间的模块集成。
-- 参与 ROS 2 节点通信、传感器数据流、导航控制与机器人执行链路的联调。
-- 协助排查多控制器通信和机器人整机运行过程中的问题。
+---
 
-### 3.3 代码说明 | Implementation Notes
-
-- 本项目为团队合作成果，以上内容按本人实际工作分工整理。
-- Nav2、ROS 2、相机驱动及其他第三方开源组件不作为个人独立原创算法成果。
-- 代码实现、仿真验证及实机验收属于不同阶段，具体实验结果以仓库公开的运行记录与演示材料为准。
-- 项目仍在整理实验数据、测试记录和相关技术文档。
-
-## 4. 实验与验证
-
-目前整理中的仓库包含实现代码、启动配置和技术文档。
-
-- SLAM 地图与机器人实际运动轨迹；
-- 底盘里程计、定位和导航实验记录；
-- YOLO/RKNN 实际推理结果和性能测量；
-- 机械臂抓取与完整任务流程演示。
-
-## 5. 我的工作（待按实际贡献填写）
-
-- [x] 机器人 ROS 2 软件架构与节点集成：说明本人负责的文件与功能。
-- [x] 视觉检测、模型部署和目标定位：说明训练、量化、调参或集成工作。
-- [x] 建图、导航及底盘通信：说明本人实现或调试的模块。
-
-团队项目应将本人贡献与队友贡献明确区分。
-
-## 6. 环境与运行
-
-源码包含 ROS 2 Python 功能包与部分硬件相关路径。完整依赖版本、设备接口、标定参数及可复现启动流程仍需核验后补充。请勿直接将仓库中现有参数用于无人看护的真实机器人运动。
-
-## 7. 第三方依赖与致谢
-
-项目源码目录还包含 `costmap_converter`、`OrbbecSDK_ROS2-master`、`sllidar_ros2`、`teb_local_planner`、`vision_opencv` 等第三方组件。这些组件并非本项目独立原创成果。**Project status:** Repository documentation in progress. 
-
-
+*Repository status: Documentation and reproducibility materials are being organized.*
