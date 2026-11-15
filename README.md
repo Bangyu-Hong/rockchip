@@ -4,6 +4,16 @@
 
 > 2026 年全国大学生嵌入式芯片与系统设计竞赛团队项目。
 
+ ## 🎬 项目演示 | Project Demo
+
+[▶ 查看机器人实机演示视频](./演示视频.mp4)
+
+[📄 查看完整技术文档](./技术文档.pdf)
+
+> 本项目为团队竞赛作品，实际演示内容与
+> 功能完成情况以视频和实验记录为准。
+
+
 ## 1. 项目简介
 
 项目面向室内球体拾取与物料递送场景，采用 **RK3588 + STM32F407 + ESP32** 分层控制架构，包含视觉目标检测、地图构建与导航、底盘运动控制、机械臂抓取和任务状态管理等模块。
@@ -67,4 +77,5 @@
 ## 8. 第三方依赖与致谢
 
 项目源码目录还包含 `costmap_converter`、`OrbbecSDK_ROS2-master`、`sllidar_ros2`、`teb_local_planner`、`vision_opencv` 等第三方组件。这些组件并非本项目独立原创成果。**Project status:** Repository documentation in progress. 
+
 
