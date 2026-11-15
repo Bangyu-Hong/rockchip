@@ -51,6 +51,30 @@
 - 机械臂运动学计算
 - 抓取任务节点与动作执行
 
+- 
+### 关键算法实现 | Key Implementations
+
+以下为项目中值得重点查看的算法与控制代码。
+
+| 核心代码 | 技术内容 |
+|---|---|
+| [main_control.py](./src/my_robot_core/my_robot_core/main_control.py) | ROS 2 任务状态机、Nav2 目标调度、视觉对位与抓取流程 |
+| [npu_3d_tracker.py](./src/robot_vision/robot_vision/npu_3d_tracker.py) | YOLO/RKNN 端侧推理、目标筛选、RGB-D 三维定位 |
+| [planar_ekf_node.py](./src/my_robot_core/my_robot_core/planar_ekf_node.py) | 二维 EKF、轮式里程计与 IMU 融合、可选视觉里程计融合 |
+| [rgbd_visual_odometry_node.py](./src/robot_vision/robot_vision/rgbd_visual_odometry_node.py) | RGB-D 特征匹配与视觉里程计 |
+
+### 算法验证代码
+
+项目还包含部分模块测试代码：
+
+- [任务控制测试](./src/my_robot_core/test/test_main_control.py)
+- [EKF 测试](./src/my_robot_core/test/test_planar_ekf_node.py)
+- [RGB-D 视觉里程计测试](./src/robot_vision/test/test_rgbd_visual_odometry_node.py)
+
+说明：以上列出了仓库中的算法实现与测试文件。
+实际运行结果以实验记录与演示视频为准。
+
+
 ## 3. 软件架构
 
 ```text
